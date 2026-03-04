@@ -209,6 +209,12 @@ class Orchestrator:
                 consecutive_rollbacks += 1
                 if message_history[-1]["role"] == "assistant":
                     message_history.pop()
+                feedback = (
+                    "System Feedback: Your last output contained MCP tags. "
+                    "This format is strictly prohibited here. Please output the final answer properly, "
+                    "or formulate your thoughts without using <use_mcp_tool> tags."
+                )
+                message_history.append({"role": "user", "content": feedback})
                 self.task_log.log_step(
                     "warning",
                     f"{agent_name} | Turn: {turn_count} | Rollback",
@@ -235,6 +241,11 @@ class Orchestrator:
                 consecutive_rollbacks += 1
                 if message_history[-1]["role"] == "assistant":
                     message_history.pop()
+                feedback = (
+                    f"System Feedback: Your last output contained refusal keywords: {matched_keywords}. "
+                    "Please fulfill the objective instead of refusing. Use tools or your knowledge."
+                )
+                message_history.append({"role": "user", "content": feedback})  
                 self.task_log.log_step(
                     "warning",
                     f"{agent_name} | Turn: {turn_count} | Rollback",
@@ -294,9 +305,16 @@ class Orchestrator:
 
         if count > 0:
             if consecutive_rollbacks < self.MAX_CONSECUTIVE_ROLLBACKS - 1:
-                message_history.pop()
+                if message_history and message_history[-1]["role"] == "assistant":
+                    message_history.pop()
                 turn_count -= 1
                 consecutive_rollbacks += 1
+                feedback = (
+                    f"System Feedback: The tool '{tool_name}' was just called with the exact same query '{query_str}', "
+                    "which resulted in a loop. Please DO NOT repeat this exact call. Formulate a new plan, "
+                    "try different parameters, or use a different approach entirely."
+                )
+                message_history.append({"role": "user", "content": feedback})
                 self.task_log.log_step(
                     "warning",
                     f"{agent_name} | Turn: {turn_count} | Rollback",
@@ -551,10 +569,19 @@ class Orchestrator:
                         tool_name, result, tool_result
                     ):
                         if consecutive_rollbacks < self.MAX_CONSECUTIVE_ROLLBACKS - 1:
-                            message_history.pop()
+                            if message_history and message_history[-1]["role"] == "assistant":
+                                message_history.pop()
                             turn_count -= 1
                             consecutive_rollbacks += 1
                             should_rollback_turn = True
+                            error_snippet = str(result)[:300]
+                            feedback = (
+                                f"System Feedback: The tool call '{tool_name}' failed with the following error/empty result:\n"
+                                f"[{error_snippet}]\n"
+                                "Please DO NOT repeat this exact call. Analyze the error and try a different query, "
+                                "wait, or use a different tool."
+                            )
+                            message_history.append({"role": "user", "content": feedback})
                             self.task_log.log_step(
                                 "warning",
                                 f"{sub_agent_name} | Turn: {turn_count} | Rollback",
@@ -1030,10 +1057,19 @@ class Orchestrator:
                                 consecutive_rollbacks
                                 < self.MAX_CONSECUTIVE_ROLLBACKS - 1
                             ):
-                                message_history.pop()
+                                if message_history and message_history[-1]["role"] == "assistant":
+                                    message_history.pop()
                                 turn_count -= 1
                                 consecutive_rollbacks += 1
                                 should_rollback_turn = True
+                                error_snippet = str(result)[:300]
+                                feedback = (
+                                    f"System Feedback: The tool call '{tool_name}' failed with the following error/empty result:\n"
+                                    f"[{error_snippet}]\n"
+                                    "Please DO NOT repeat this exact call. Analyze the error and try a different query, "
+                                    "wait, or use a different tool."
+                                )
+                                message_history.append({"role": "user", "content": feedback})
                                 self.task_log.log_step(
                                     "warning",
                                     f"Main Agent | Turn: {turn_count} | Rollback",
